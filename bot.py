@@ -3,6 +3,7 @@ import json
 import tempfile
 import time
 import re
+import shutil
 import traceback
 from datetime import datetime
 import pandas as pd
