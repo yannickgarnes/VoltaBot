@@ -4,6 +4,7 @@ import tempfile
 import time
 import re
 import shutil
+import glob
 import traceback
 from datetime import datetime
 import pandas as pd
@@ -190,9 +191,16 @@ def ejecutar_bot():
             if os.path.exists(v):
                 chrome_path = v
                 break
+    
+    if not chrome_path:
+        print("🔍 Buscando en /nix/store... (puede tardar un poco)")
+        posibles = glob.glob("/nix/store/*/bin/chromium") + glob.glob("/nix/store/*/bin/google-chrome")
+        if posibles:
+            chrome_path = posibles[0]
 
     if not chrome_path:
         print("❌ ERROR CRÍTICO: No se encuentra Chromium/Chrome en el sistema.")
+        print(f"PATH actual: {os.environ.get('PATH')}")
         try:
             print("Contenido de /usr/bin (primeros 20):", os.listdir("/usr/bin")[:20])
         except:
