@@ -170,20 +170,33 @@ def ejecutar_bot():
 
     # --- NUEVA DETECCIÓN DE CHROMIUM ---
     chrome_path = None
-    # Prioridad 1: shutil.which (Nixpacks lo pone en el PATH)
-    chrome_path = shutil.which("chromium") or shutil.which("chromium-browser")
+    búsqueda = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]
     
-    # Prioridad 2: Rutas comunes en Linux/Railway
+    for b in búsqueda:
+        chrome_path = shutil.which(b)
+        if chrome_path:
+            break
+    
     if not chrome_path:
-        vias = ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/nix/var/nix/profiles/default/bin/chromium"]
+        vias = [
+            "/usr/bin/chromium", 
+            "/usr/bin/chromium-browser", 
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/nix/var/nix/profiles/default/bin/chromium",
+            "/nix/var/nix/profiles/default/bin/google-chrome"
+        ]
         for v in vias:
             if os.path.exists(v):
                 chrome_path = v
                 break
 
     if not chrome_path:
-        print("❌ ERROR CRÍTICO: No se encuentra Chromium en el sistema.")
-        print("Asegúrate de que 'chromium' está en nixpacks.toml")
+        print("❌ ERROR CRÍTICO: No se encuentra Chromium/Chrome en el sistema.")
+        try:
+            print("Contenido de /usr/bin (primeros 20):", os.listdir("/usr/bin")[:20])
+        except:
+            pass
         return
 
     print(f"✅ Navegador detectado en: {chrome_path}")
