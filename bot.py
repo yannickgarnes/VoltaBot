@@ -30,7 +30,6 @@ def get_creds_path():
         print("❌ ERROR: No se encontró GOOGLE_CREDS_JSON en las variables del servicio.")
         return None
     try:
-        # Intentar cargar para validar que sea un JSON correcto
         creds_dict = json.loads(creds_str)
         tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
         json.dump(creds_dict, tmp)
@@ -71,7 +70,6 @@ def guardar_en_gsheet(datos, ambos_1p, ambos_partido):
         nueva_fila = [datos['eq1'], datos['eq2'], datos['g1p1'], datos['g1p2'], datos['g2p1'], datos['g2p2'], total_gol, "", ""]
         sheet.append_row(nueva_fila)
 
-        # Formato y colores
         last_idx = len(sheet.get_all_values())
         color_v = {"red": 0.0, "green": 0.9, "blue": 0.0}
         color_r = {"red": 1.0, "green": 0.0, "blue": 0.0}
@@ -127,23 +125,17 @@ def guardar_resultado(p):
 def ejecutar_bot():
     preparar_excel()
     
-    # Búsqueda exhaustiva del navegador
+    # Búsqueda forzada: Priorizamos la variable CHROME_BIN de Nixpacks
     chrome_path = os.environ.get("CHROME_BIN")
-    if not chrome_path:
-        chrome_path = shutil.which("chromium") or shutil.which("google-chrome")
+    if not chrome_path or not os.path.exists(chrome_path):
+        chrome_path = shutil.which("chromium") or "/usr/bin/chromium"
     
-    if not chrome_path:
-        rutas_manuales = ["/usr/bin/chromium", "/usr/bin/google-chrome", "/nix/var/nix/profiles/default/bin/chromium"]
-        for r in rutas_manuales:
-            if os.path.exists(r):
-                chrome_path = r
-                break
-
-    if not chrome_path:
-        print("❌ ERROR CRÍTICO: No se encontró Chromium. Revisa nixpacks.toml")
+    # Validación final de seguridad
+    if not chrome_path or not os.path.exists(chrome_path):
+        print("❌ ERROR CRÍTICO: El ejecutable de Chromium no existe en la ruta.")
         return
 
-    print(f"🚀 Iniciando Bot. Navegador detectado en: {chrome_path}")
+    print(f"🚀 Iniciando Bot. Navegador confirmado en: {chrome_path}")
 
     while True:
         driver = None
@@ -155,7 +147,8 @@ def ejecutar_bot():
             options.add_argument("--disable-gpu")
             options.add_argument("--window-size=1920,1080")
 
-            driver = uc.Chrome(options=options, browser_executable_path=chrome_path)
+            # Forzamos que la ruta sea un String para evitar el error anterior
+            driver = uc.Chrome(options=options, browser_executable_path=str(chrome_path))
             driver.get(URL)
             print("🌐 Bet365 cargada. Buscando Battle Volta...")
             time.sleep(15)
@@ -199,7 +192,6 @@ def ejecutar_bot():
 
                                 if p["estado"] == "1P":
                                     if "Descanso" in timer or current_mins >= 3:
-                                        # Si es descanso o pasaron 3 min, fijamos marcador 1P
                                         g1, g2 = (s1, s2) if "Descanso" in timer else p["m_pre3"]
                                         p.update({"g1p1": g1, "g1p2": g2, "estado": "2P"})
                                         print(f"🌘 Media parte: {match_id} ({g1}-{g2})")
@@ -214,11 +206,9 @@ def ejecutar_bot():
                                         guardar_resultado(p)
                             except: continue
 
-                    # Limpiar partidos finalizados o desaparecidos
                     borrar = [m for m, p in partidos_monitoreados.items() if m not in en_pantalla and p["estado"] != "FIN"]
                     for m in borrar:
                         p = partidos_monitoreados[m]
-                        # Si desaparece cerca del final, lo damos por terminado
                         if p["u_min"] >= 5:
                             p.update({"g2p1": p["u_s1"] - p["g1p1"], "g2p2": p["u_s2"] - p["g1p2"], "estado": "FIN"})
                             guardar_resultado(p)
