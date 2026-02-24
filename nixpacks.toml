@@ -1,11 +1,8 @@
-[variables]
-    PYTHON_VERSION = "3.10"
-
 [phases.setup]
-    nixPkgs = ["chromium", "chromedriver", "python310"]
+nixPkgs = ["chromium", "chromedriver", "python310"]
 
 [phases.build]
-    cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
+cmds = ["pip install -r requirements.txt"]
 
 [start]
-    cmd = "python bot.py"
+cmd = "python bot.py"
