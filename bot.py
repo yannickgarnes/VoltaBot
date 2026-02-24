@@ -164,6 +164,7 @@ def guardar_resultado(datos):
 # ============================================================
 
 def ejecutar_bot():
+    print("📢 Iniciando preparar_excel()...")
     preparar_excel()
     print("🚀 BOT VOLTA INICIADO EN RAILWAY - 24/7")
     print(f"🕐 {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
@@ -212,7 +213,7 @@ def ejecutar_bot():
     while True:
         driver = None
         try:
-            print(f"\n🔄 [{datetime.now().strftime('%H:%M:%S')}] Iniciando navegador...")
+            print(f"\n🔄 [{datetime.now().strftime('%H:%M:%S')}] Configurando ChromeOptions...")
 
             options = uc.ChromeOptions()
             options.add_argument("--headless=new")
@@ -222,11 +223,14 @@ def ejecutar_bot():
             options.add_argument("--window-size=1920,1080")
             options.add_argument("--disable-blink-features=AutomationControlled")
             
-            # Forzamos el uso de la ruta detectada
-            driver = uc.Chrome(options=options, browser_executable_path=chrome_path)
-            wait = WebDriverWait(driver, 15)
-
+            print(f"🛠️ Llamando a uc.Chrome con path: {chrome_path}")
+            # Agregamos use_subprocess=True que ayuda en entornos Docker/Linux
+            driver = uc.Chrome(options=options, browser_executable_path=chrome_path, use_subprocess=True)
+            print("🌐 Navegador iniciado correctamente. Cargando URL...")
+            
+            wait = WebDriverWait(driver, 20)
             driver.get(URL)
+            print(f"📍 URL cargada: {driver.current_url}")
             time.sleep(10)
 
             # Aceptar cookies si aparecen
