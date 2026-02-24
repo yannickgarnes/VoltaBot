@@ -5,4 +5,5 @@ nixPkgs = ["chromium", "chromedriver", "python310"]
 cmds = ["pip install -r requirements.txt"]
 
 [start]
-cmd = "python bot.py"
+# Añadimos las rutas de Nix al PATH antes de arrancar el bot
+cmd = "PATH=$PATH:/usr/bin:/nix/var/nix/profiles/default/bin python bot.py"
