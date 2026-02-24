@@ -1,9 +1,9 @@
 [phases.setup]
-nixPkgs = ["chromium", "chromedriver", "python311"]
+nixPkgs = ["python311"]
+aptPkgs = ["chromium", "chromium-driver"]
 
 [phases.build]
 cmds = ["pip install -r requirements.txt"]
 
 [start]
-# Localizamos el binario de Nix y creamos un link en una ruta estándar
-cmd = "ln -sf $(which chromium) /usr/bin/chromium && export CHROME_BIN=/usr/bin/chromium && python bot.py"
+cmd = "python bot.py"
