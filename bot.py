@@ -266,26 +266,18 @@ def ejecutar_bot():
                         fail_count = 0
                         try:
                             fixtures = volta_section.find_elements(By.CLASS_NAME, "ovm-Fixture")
-                        except:
-                            fixtures = []
-
                         for fixture in fixtures:
                             try:
                                 names = fixture.find_elements(By.CLASS_NAME, "ovm-FixtureDetailsTwoWay_TeamName")
-                                if len(names) < 2:
-                                    continue
-                                eq_raw1 = names[0].text.strip()
-                                eq_raw2 = names[1].text.strip()
+                                if len(names) < 2: continue
+                                eq_raw1, eq_raw2 = names[0].text.strip(), names[1].text.strip()
                                 id_match = f"{eq_raw1} vs {eq_raw2}"
                                 en_pantalla.add(id_match)
 
-                                s1_el = fixture.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamOne")
-                                s2_el = fixture.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamTwo")
-                                s1, s2 = int(s1_el.text.strip()), int(s2_el.text.strip())
-
-                                timer_el = fixture.find_element(By.CLASS_NAME, "ovm-FixtureDetailsTwoWay_Timer")
-                                timer_str = timer_el.text.strip()
-
+                                s1 = int(fixture.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamOne").text.strip())
+                                s2 = int(fixture.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamTwo").text.strip())
+                                timer_str = fixture.find_element(By.CLASS_NAME, "ovm-FixtureDetailsTwoWay_Timer").text.strip()
+                                
                                 t_match = re.search(r'(\d{2}):(\d{2})', timer_str)
                                 minutos = int(t_match.group(1)) if t_match else 0
                                 segundos = int(t_match.group(2)) if t_match else 0
@@ -293,54 +285,46 @@ def ejecutar_bot():
                                 if id_match not in partidos_monitoreados:
                                     print(f"🆕 [{datetime.now().strftime('%H:%M:%S')}] Detectado: {id_match} ({timer_str})")
                                     partidos_monitoreados[id_match] = {
-                                        "eq1": eq_raw1, "eq2": eq_raw2,
-                                        "estado": "jugando_1p",
-                                        "g1p1": 0, "g1p2": 0,
-                                        "g2p1": 0, "g2p2": 0,
-                                        "cuota_1p": 1.0, "cuota_partido": 1.0,
+                                        "eq1": eq_raw1, "eq2": eq_raw2, "estado": "jugando_1p",
+                                        "g1p1": 0, "g1p2": 0, "g2p1": 0, "g2p2": 0,
                                         "ultimo_s1_visto": s1, "ultimo_s2_visto": s2,
-                                        "marcador_pre_3min": (s1, s2),
-                                        "ultimo_min": minutos
+                                        "marcador_pre_3min": (s1, s2), "ultimo_min": minutos
                                     }
 
                                 p = partidos_monitoreados[id_match]
-                                p["ultimo_s1_visto"] = s1
-                                p["ultimo_s2_visto"] = s2
-                                p["ultimo_min"] = minutos
-
-                                if minutos < 3:
-                                    p["marcador_pre_3min"] = (s1, s2)
+                                p.update({"ultimo_s1_visto": s1, "ultimo_s2_visto": s2, "ultimo_min": minutos})
+                                if minutos < 3: p["marcador_pre_3min"] = (s1, s2)
 
                                 if p["estado"] == "jugando_1p":
                                     if "Descanso" in timer_str or "HT" in timer_str or (minutos == 3 and segundos <= 5):
                                         print(f"🌘 MEDIA PARTE ({timer_str}): {id_match} -> {s1}-{s2}")
                                         p.update({"g1p1": s1, "g1p2": s2, "estado": "jugando_2p"})
                                     elif minutos >= 3:
-                                        g1_prev, g2_prev = p["marcador_pre_3min"]
-                                        print(f"🌘 MEDIA PARTE RECUPERADA ({timer_str}): {id_match} -> {g1_prev}-{g2_prev}")
-                                        p.update({"g1p1": g1_prev, "g1p2": g2_prev, "estado": "jugando_2p"})
+                                        g1_p, g2_p = p["marcador_pre_3min"]
+                                        print(f"🌘 MEDIA PARTE RECUPERADA ({timer_str}): {id_match} -> {g1_p}-{g2_p}")
+                                        p.update({"g1p1": g1_p, "g1p2": g2_p, "estado": "jugando_2p"})
 
                                 elif p["estado"] == "jugando_2p":
                                     if minutos >= 6 or "Finalizado" in timer_str or "FT" in timer_str:
                                         print(f"🏁 FINAL ({timer_str}): {id_match} -> {s1}-{s2}")
-                                        p.update({
-                                            "g2p1": s1 - p["g1p1"],
-                                            "g2p2": s2 - p["g1p2"],
-                                            "estado": "finalizado"
-                                        })
+                                        p.update({"g2p1": s1 - p["g1p1"], "g2p2": s2 - p["g1p2"], "estado": "finalizado"})
                                         guardar_resultado(p)
-
-                            except Exception as e_row:
-                                if "stale" in str(e_row).lower():
-                                    continue
-                                print(f"⚠️ Error partido: {e_row}")
-                                continue
-
+                            except: continue
                     else:
                         fail_count += 1
-                        print(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] Sin sección Volta visible... ({fail_count})")
+                        print(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] Sin sección Volta visible... ({fail_count}/10)")
+                        if fail_count == 1 or fail_count % 5 == 0:
+                            print(f"   � Título: {driver.title} | URL: {driver.current_url}")
+                            try:
+                                secciones = [c.text.split('\n')[0] for c in comp_elements[:5]]
+                                print(f"   📌 Secciones: {', '.join(secciones) if secciones else 'Ninguna'}")
+                            except: pass
+                        
                         if fail_count > 10:
                             driver.execute_script("window.scrollBy(0, 500);")
+                            if fail_count > 20:
+                                driver.get(URL)
+                                time.sleep(10)
                             fail_count = 0
 
                     # Limpieza y rescate de partidos desaparecidos
