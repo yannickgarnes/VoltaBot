@@ -208,7 +208,28 @@ def ejecutar_bot():
                                     guardar_resultado(p)
                             except: continue
                     else:
-                        print(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] Sin Volta visible")
+                        fail_count += 1
+                        print(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] No veo 'Battle Volta' ({fail_count})")
+                        
+                        # DIAGNÓSTICO CADA 5 FALLOS
+                        if fail_count % 5 == 0:
+                            print(f"   📄 Título: {driver.title}")
+                            print(f"   � URL: {driver.current_url}")
+                            try:
+                                nombres = []
+                                for c in comps[:5]:
+                                    lineas = c.text.split("\n")
+                                    if lineas: nombres.append(lineas[0])
+                                if nombres:
+                                    print(f"   📌 Secciones disponibles: {', '.join(nombres)}")
+                                else:
+                                    print("   📌 No hay secciones con clase 'ovm-Competition'")
+                            except:
+                                pass
+
+                        if fail_count > 10:
+                            driver.execute_script("window.scrollBy(0, 500);")
+                            fail_count = 0
                     
                     # Limpieza
                     borrar = [m for m, p in partidos_monitoreados.items() if m not in en_pantalla and p["estado"] != "FIN"]
