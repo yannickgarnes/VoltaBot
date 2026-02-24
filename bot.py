@@ -5,7 +5,6 @@ import time
 import re
 import shutil
 import traceback
-import subprocess
 from datetime import datetime
 import pandas as pd
 import openpyxl
@@ -13,7 +12,6 @@ from openpyxl.styles import PatternFill
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -27,7 +25,7 @@ GSHEET_ID = os.environ.get("GSHEET_ID", "")
 def get_creds_path():
     creds_str = os.environ.get("GOOGLE_CREDS_JSON", "")
     if not creds_str:
-        print("❌ ERROR: No se encontró GOOGLE_CREDS_JSON en las variables del servicio.")
+        print("❌ ERROR: No se encontró GOOGLE_CREDS_JSON en las variables.")
         return None
     try:
         creds_dict = json.loads(creds_str)
@@ -43,7 +41,7 @@ CREDS_JSON = get_creds_path()
 partidos_monitoreados = {}
 
 # ============================================================
-# FUNCIONES DE ALMACENAMIENTO
+# FUNCIONES DE EXCEL Y GOOGLE SHEETS
 # ============================================================
 
 def preparar_excel():
@@ -58,7 +56,6 @@ def preparar_excel():
 def guardar_en_gsheet(datos, ambos_1p, ambos_partido):
     try:
         if not CREDS_JSON or not GSHEET_ID:
-            print("⚠️ Saltando Google Sheets: Faltan credenciales o ID.")
             return
             
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -76,9 +73,9 @@ def guardar_en_gsheet(datos, ambos_1p, ambos_partido):
         
         sheet.format(f"H{last_idx}", {"backgroundColor": color_v if ambos_1p else color_r})
         sheet.format(f"I{last_idx}", {"backgroundColor": color_v if ambos_partido else color_r})
-        print(f"📊 [GSHEETS] ✅ Sincronizado: {datos['eq1']} vs {datos['eq2']}")
+        print(f"📊 [GSHEETS] ✅ Subido: {datos['eq1']} vs {datos['eq2']}")
     except Exception as e:
-        print(f"❌ [GSHEETS] Error: {e}")
+        print(f"❌ [GSHEETS] Error al subir: {e}")
 
 def guardar_resultado(p):
     try:
@@ -116,7 +113,7 @@ def guardar_resultado(p):
         datos_gs.update({'eq1': eq1, 'eq2': eq2})
         guardar_en_gsheet(datos_gs, a1p, ap)
     except Exception as e:
-        print(f"❌ Error en guardado final: {e}")
+        print(f"❌ Error guardando Excel: {e}")
 
 # ============================================================
 # NÚCLEO DEL BOT
@@ -125,17 +122,17 @@ def guardar_resultado(p):
 def ejecutar_bot():
     preparar_excel()
     
-    # Búsqueda forzada: Priorizamos la variable CHROME_BIN de Nixpacks
-    chrome_path = os.environ.get("CHROME_BIN")
-    if not chrome_path or not os.path.exists(chrome_path):
-        chrome_path = shutil.which("chromium") or "/usr/bin/chromium"
+    # Ruta estándar de Ubuntu garantizada por aptPkgs
+    chrome_path = "/usr/bin/chromium"
     
-    # Validación final de seguridad
-    if not chrome_path or not os.path.exists(chrome_path):
-        print("❌ ERROR CRÍTICO: El ejecutable de Chromium no existe en la ruta.")
+    if not os.path.exists(chrome_path):
+        chrome_path = shutil.which("chromium")
+        
+    if not chrome_path:
+        print("❌ ERROR CRÍTICO: No se encuentra Chromium en el sistema APT.")
         return
 
-    print(f"🚀 Iniciando Bot. Navegador confirmado en: {chrome_path}")
+    print(f"🚀 Iniciando Bot. Navegador asegurado en: {chrome_path}")
 
     while True:
         driver = None
@@ -147,10 +144,10 @@ def ejecutar_bot():
             options.add_argument("--disable-gpu")
             options.add_argument("--window-size=1920,1080")
 
-            # Forzamos que la ruta sea un String para evitar el error anterior
+            # Inyección limpia del string
             driver = uc.Chrome(options=options, browser_executable_path=str(chrome_path))
             driver.get(URL)
-            print("🌐 Bet365 cargada. Buscando Battle Volta...")
+            print("🌐 Bet365 cargada. Esperando sección Volta...")
             time.sleep(15)
 
             while True:
@@ -177,7 +174,7 @@ def ejecutar_bot():
                                 current_mins = int(m_search.group(1)) if m_search else 0
 
                                 if match_id not in partidos_monitoreados:
-                                    print(f"🆕 Nuevo partido: {match_id}")
+                                    print(f"🆕 Partido detectado: {match_id}")
                                     partidos_monitoreados[match_id] = {
                                         "eq1": names[0].text, "eq2": names[1].text, "estado": "1P",
                                         "g1p1": 0, "g1p2": 0, "g2p1": 0, "g2p2": 0,
@@ -206,6 +203,7 @@ def ejecutar_bot():
                                         guardar_resultado(p)
                             except: continue
 
+                    # Eliminar y guardar los partidos que desaparecen de la pantalla
                     borrar = [m for m, p in partidos_monitoreados.items() if m not in en_pantalla and p["estado"] != "FIN"]
                     for m in borrar:
                         p = partidos_monitoreados[m]
@@ -215,13 +213,12 @@ def ejecutar_bot():
                         del partidos_monitoreados[m]
 
                     time.sleep(10)
-                except Exception as inner_e:
-                    print(f"⚠️ Error en escaneo: {inner_e}")
+                except Exception:
                     driver.get(URL)
                     time.sleep(10)
 
-        except Exception as outer_e:
-            print(f"❌ Error crítico de sesión: {outer_e}")
+        except Exception as e:
+            print(f"❌ Sesión cerrada / Error en Selenium: {e}")
             if driver:
                 try: driver.quit()
                 except: pass
