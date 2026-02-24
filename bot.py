@@ -169,14 +169,14 @@ def ejecutar_bot():
     print(f"🕐 {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
     print(f"📋 Google Sheet ID: {GSHEET_ID}")
 
-    # --- NUEVA DETECCIÓN DE CHROMIUM ---
-    chrome_path = None
-    búsqueda = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]
+    # --- DETECCIÓN DE CHROMIUM ---
+    chrome_path = os.environ.get("CHROMIUM_PATH")
     
-    for b in búsqueda:
-        chrome_path = shutil.which(b)
-        if chrome_path:
-            break
+    if not chrome_path:
+        búsqueda = ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable"]
+        for b in búsqueda:
+            chrome_path = shutil.which(b)
+            if chrome_path: break
     
     if not chrome_path:
         vias = [
