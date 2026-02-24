@@ -105,11 +105,10 @@ def guardar_en_gsheet(datos_fila, ambos_1p, ambos_partido):
         sheet.format(f"H{last_row_idx}", {"backgroundColor": color_verde if ambos_1p else color_rojo})
         sheet.format(f"I{last_row_idx}", {"backgroundColor": color_verde if ambos_partido else color_rojo})
 
-        print(f"📊 [GSHEETS] ✅ Actualizado: {eq1} vs {eq2} | 1ªP: {g1p1}-{g1p2} | 2ªP: {g2p1}-{g2p2} | Total: {total}")
+        print(f"📊 [GSHEETS] ✅ Actualizado: {eq1} vs {eq2} | 1ªP: {g1p1}-{g1p2} | Total: {total}")
 
     except Exception as e:
         print(f"❌ [GSHEETS] Error: {e}")
-        traceback.print_exc()
 
 def guardar_resultado(datos):
     try:
@@ -150,190 +149,112 @@ def guardar_resultado(datos):
         wb.save(EXCEL_PATH)
         print(f"✅ EXCEL OK: {eq1} vs {eq2} | Final: {total_1}-{total_2}")
 
-        # Subir a Google Sheets
         guardar_en_gsheet(datos_limpios, ambos_1p, ambos_partido)
 
     except Exception as e:
         print(f"❌ Error guardando resultado: {e}")
-        traceback.print_exc()
 
 # ============================================================
-# BUCLE PRINCIPAL - 24/7 con auto-reinicio
+# BUCLE PRINCIPAL
 # ============================================================
 
 def ejecutar_bot():
     preparar_excel()
-    print("🚀 BOT VOLTA INICIADO EN RAILWAY - 24/7")
-    print(f"🕐 {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-    print(f"📋 Google Sheet ID: {GSHEET_ID}")
+    print("🚀 BOT VOLTA INICIADO EN RAILWAY")
 
     while True:
         driver = None
         try:
-            print(f"\n🔄 [{datetime.now().strftime('%H:%M:%S')}] Iniciando navegador headless...")
-
             options = uc.ChromeOptions()
+            options.binary_location = "/usr/bin/chromium" # Indispensable para Railway
             options.add_argument("--headless=new")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
             options.add_argument("--window-size=1920,1080")
             options.add_argument("--disable-blink-features=AutomationControlled")
-            options.add_argument("--disable-extensions")
-            options.add_argument("--remote-debugging-port=9222")
 
             driver = uc.Chrome(options=options)
-            wait = WebDriverWait(driver, 15)
+            wait = WebDriverWait(driver, 20)
 
             driver.get(URL)
-            time.sleep(10)
+            time.sleep(12)
 
-            # Aceptar cookies si aparecen
-            try:
-                cookies = driver.find_element(By.XPATH, "//div[contains(text(), 'Aceptar')]")
-                cookies.click()
-                time.sleep(2)
-                print("🍪 Cookies aceptadas")
-            except:
-                pass
-
-            fail_count = 0
-
+            # Bucle de escaneo
             while True:
                 try:
-                    if URL not in driver.current_url:
-                        driver.get(URL)
-                        time.sleep(5)
-
                     comp_elements = driver.find_elements(By.CLASS_NAME, "ovm-Competition")
-                    volta_section = None
-                    for comp in comp_elements:
-                        try:
-                            if "Battle Volta" in comp.text:
-                                volta_section = comp
-                                break
-                        except:
-                            continue
+                    volta_section = next((c for c in comp_elements if "Battle Volta" in c.text), None)
 
                     en_pantalla = set()
 
                     if volta_section:
-                        fail_count = 0
-                        try:
-                            fixtures = volta_section.find_elements(By.CLASS_NAME, "ovm-Fixture")
-                        except:
-                            fixtures = []
-
+                        fixtures = volta_section.find_elements(By.CLASS_NAME, "ovm-Fixture")
                         for fixture in fixtures:
                             try:
                                 names = fixture.find_elements(By.CLASS_NAME, "ovm-FixtureDetailsTwoWay_TeamName")
-                                if len(names) < 2:
-                                    continue
-                                eq_raw1 = names[0].text.strip()
-                                eq_raw2 = names[1].text.strip()
-                                id_match = f"{eq_raw1} vs {eq_raw2}"
+                                if len(names) < 2: continue
+                                
+                                id_match = f"{names[0].text} vs {names[1].text}"
                                 en_pantalla.add(id_match)
 
-                                s1_el = fixture.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamOne")
-                                s2_el = fixture.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamTwo")
-                                s1, s2 = int(s1_el.text.strip()), int(s2_el.text.strip())
-
-                                timer_el = fixture.find_element(By.CLASS_NAME, "ovm-FixtureDetailsTwoWay_Timer")
-                                timer_str = timer_el.text.strip()
-
+                                s1 = int(fixture.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamOne").text)
+                                s2 = int(fixture.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamTwo").text)
+                                timer_str = fixture.find_element(By.CLASS_NAME, "ovm-FixtureDetailsTwoWay_Timer").text
+                                
                                 t_match = re.search(r'(\d{2}):(\d{2})', timer_str)
                                 minutos = int(t_match.group(1)) if t_match else 0
                                 segundos = int(t_match.group(2)) if t_match else 0
 
                                 if id_match not in partidos_monitoreados:
-                                    print(f"🆕 [{datetime.now().strftime('%H:%M:%S')}] Detectado: {id_match} ({timer_str})")
+                                    print(f"🆕 Detectado: {id_match}")
                                     partidos_monitoreados[id_match] = {
-                                        "eq1": eq_raw1, "eq2": eq_raw2,
-                                        "estado": "jugando_1p",
-                                        "g1p1": 0, "g1p2": 0,
-                                        "g2p1": 0, "g2p2": 0,
-                                        "cuota_1p": 1.0, "cuota_partido": 1.0,
-                                        "ultimo_s1_visto": s1, "ultimo_s2_visto": s2,
-                                        "marcador_pre_3min": (s1, s2),
+                                        "eq1": names[0].text, "eq2": names[1].text,
+                                        "estado": "jugando_1p", "g1p1": 0, "g1p2": 0,
+                                        "g2p1": 0, "g2p2": 0, "ultimo_s1_visto": s1, 
+                                        "ultimo_s2_visto": s2, "marcador_pre_3min": (s1, s2),
                                         "ultimo_min": minutos
                                     }
 
                                 p = partidos_monitoreados[id_match]
-                                p["ultimo_s1_visto"] = s1
-                                p["ultimo_s2_visto"] = s2
-                                p["ultimo_min"] = minutos
+                                p.update({"ultimo_s1_visto": s1, "ultimo_s2_visto": s2, "ultimo_min": minutos})
 
-                                if minutos < 3:
-                                    p["marcador_pre_3min"] = (s1, s2)
+                                if minutos < 3: p["marcador_pre_3min"] = (s1, s2)
 
                                 if p["estado"] == "jugando_1p":
-                                    if "Descanso" in timer_str or "HT" in timer_str or (minutos == 3 and segundos <= 5):
-                                        print(f"🌘 MEDIA PARTE ({timer_str}): {id_match} -> {s1}-{s2}")
+                                    if "Descanso" in timer_str or (minutos == 3 and segundos <= 5):
                                         p.update({"g1p1": s1, "g1p2": s2, "estado": "jugando_2p"})
                                     elif minutos >= 3:
-                                        g1_prev, g2_prev = p["marcador_pre_3min"]
-                                        print(f"🌘 MEDIA PARTE RECUPERADA ({timer_str}): {id_match} -> {g1_prev}-{g2_prev}")
-                                        p.update({"g1p1": g1_prev, "g1p2": g2_prev, "estado": "jugando_2p"})
+                                        g1, g2 = p["marcador_pre_3min"]
+                                        p.update({"g1p1": g1, "g1p2": g2, "estado": "jugando_2p"})
 
                                 elif p["estado"] == "jugando_2p":
-                                    if minutos >= 6 or "Finalizado" in timer_str or "FT" in timer_str:
-                                        print(f"🏁 FINAL ({timer_str}): {id_match} -> {s1}-{s2}")
-                                        p.update({
-                                            "g2p1": s1 - p["g1p1"],
-                                            "g2p2": s2 - p["g1p2"],
-                                            "estado": "finalizado"
-                                        })
+                                    if minutos >= 6 or "Finalizado" in timer_str:
+                                        p.update({"g2p1": s1 - p["g1p1"], "g2p2": s2 - p["g1p2"], "estado": "finalizado"})
                                         guardar_resultado(p)
 
-                            except Exception as e_row:
-                                if "stale" in str(e_row).lower():
-                                    continue
-                                print(f"⚠️ Error partido: {e_row}")
-                                continue
+                            except: continue
 
-                    else:
-                        fail_count += 1
-                        print(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] Sin sección Volta visible... ({fail_count})")
-                        if fail_count > 10:
-                            driver.execute_script("window.scrollBy(0, 500);")
-                            fail_count = 0
+                    # Limpieza
+                    borrar = [m for m, p in partidos_monitoreados.items() if m not in en_pantalla and p["estado"] != "finalizado"]
+                    for m in borrar:
+                        p = partidos_monitoreados[m]
+                        if p["ultimo_min"] >= 5:
+                            p.update({"g2p1": p["ultimo_s1_visto"] - p["g1p1"], "g2p2": p["ultimo_s2_visto"] - p["g1p2"], "estado": "finalizado"})
+                            guardar_resultado(p)
+                        del partidos_monitoreados[m]
 
-                    # Limpieza y rescate de partidos desaparecidos
-                    borrar_lista = []
-                    for mid, p in partidos_monitoreados.items():
-                        if mid not in en_pantalla and p["estado"] not in ("finalizado", "ignorado"):
-                            if p["ultimo_min"] >= 5:
-                                print(f"🚨 Rescatando partido desaparecido: {mid}")
-                                p.update({
-                                    "g2p1": p["ultimo_s1_visto"] - p["g1p1"],
-                                    "g2p2": p["ultimo_s2_visto"] - p["g1p2"],
-                                    "estado": "finalizado"
-                                })
-                                guardar_resultado(p)
-                            borrar_lista.append(mid)
-
-                    if len(partidos_monitoreados) > 30:
-                        for m in borrar_lista:
-                            del partidos_monitoreados[m]
-
-                    time.sleep(3)
+                    time.sleep(5)
 
                 except Exception as e_inner:
-                    print(f"⚠️ Error bucle interno: {e_inner}")
-                    if "stale" in str(e_inner).lower():
-                        driver.get(URL)
+                    print(f"⚠️ Reintentando navegación...")
+                    driver.get(URL)
                     time.sleep(5)
 
         except Exception as e_outer:
-            print(f"❌ FALLO CRÍTICO: {e_outer}")
-            print(f"🔁 Reiniciando en 15 segundos...")
-            traceback.print_exc()
-            if driver:
-                try:
-                    driver.quit()
-                except:
-                    pass
-            time.sleep(15)
+            print(f"❌ Error crítico: {e_outer}")
+            if driver: driver.quit()
+            time.sleep(20)
 
 if __name__ == "__main__":
     ejecutar_bot()
