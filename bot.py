@@ -236,7 +236,9 @@ def ejecutar_bot():
                         print(f"🔍 [{datetime.now().strftime('%H:%M:%S')}] Sin Volta ({fail_count}/10)")
                         if fail_count % 5 == 0:
                             print(f"   Dbg: {driver.title} | {len(comps)} secciones")
-                            if comps: print(f"   Top: {', '.join([c.text.split('\\n')[0] for c in comps[:3]])}")
+                            if comps:
+                                top_names = [c.text.split('\n')[0] for c in comps[:3]]
+                                print(f"   Top: {', '.join(top_names)}")
                         if fail_count > 10:
                             driver.execute_script("window.scrollBy(0, 500);")
                             if fail_count > 20: 
