@@ -266,6 +266,8 @@ def ejecutar_bot():
                         fail_count = 0
                         try:
                             fixtures = volta_section.find_elements(By.CLASS_NAME, "ovm-Fixture")
+                        except:
+                            fixtures = []
                         for fixture in fixtures:
                             try:
                                 names = fixture.find_elements(By.CLASS_NAME, "ovm-FixtureDetailsTwoWay_TeamName")
