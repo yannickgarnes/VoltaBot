@@ -1,8 +1,8 @@
 [phases.setup]
-nixPkgs = ["chromium", "chromedriver", "python311"]
+nixPkgs = ["chromium", "chromedriver", "python310"]
 
 [phases.build]
-cmds = ["python -m venv /app/.venv", "/app/.venv/bin/pip install -r requirements.txt"]
+cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
 
 [start]
 cmd = "python bot.py"
