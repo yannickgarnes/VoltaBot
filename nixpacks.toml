@@ -1,9 +1,8 @@
 [phases.setup]
-nixPkgs = ["chromium", "chromedriver", "python310"]
+nixPkgs = ["chromium", "chromedriver", "python311"]
 
 [phases.build]
 cmds = ["pip install -r requirements.txt"]
 
 [start]
-# Localizamos chromium dinámicamente y lo pasamos al bot
-cmd = "export CHROME_BIN=$(which chromium) && python bot.py"
+cmd = "export CHROME_BIN=$(which chromium) && PATH=$PATH:$(dirname $CHROME_BIN) python bot.py"
