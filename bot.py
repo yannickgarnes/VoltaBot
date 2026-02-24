@@ -146,9 +146,29 @@ def guardar_resultado(datos):
 
 def ejecutar_bot():
     preparar_excel()
-    # Buscar ruta de chromium automáticamente en el contenedor
-    chrome_path = shutil.which("chromium") or shutil.which("google-chrome") or "/usr/bin/chromium"
-    print(f"📍 Usando navegador en: {chrome_path}")
+    
+    # Lista de posibles rutas de Chromium en Railway/Nixpacks
+    posibles_rutas = [
+        shutil.which("chromium"),
+        shutil.which("google-chrome"),
+        "/usr/bin/chromium",
+        "/usr/bin/google-chrome",
+        "/nix/store/" # Rutas internas de Nix
+    ]
+    
+    # Filtrar None y buscar la primera que exista
+    chrome_path = next((ruta for ruta in posibles_rutas if ruta and os.path.exists(ruta)), None)
+    
+    if not chrome_path:
+        print("❌ No se encontró el ejecutable de Chromium en ninguna ruta estándar.")
+        # Intentar una búsqueda desesperada en el sistema
+        print("🔍 Buscando Chromium manualmente...")
+        for root, dirs, files in os.walk('/usr/bin'):
+            if 'chromium' in files:
+                chrome_path = os.path.join(root, 'chromium')
+                break
+
+    print(f"📍 Navegador encontrado en: {chrome_path}")
 
     while True:
         driver = None
@@ -157,9 +177,12 @@ def ejecutar_bot():
             options.add_argument("--headless=new")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
             options.add_argument("--window-size=1920,1080")
-
+            
+            # Pasamos la ruta encontrada
             driver = uc.Chrome(options=options, browser_executable_path=chrome_path)
+            # ... resto del código
             driver.get(URL)
             time.sleep(15)
 
