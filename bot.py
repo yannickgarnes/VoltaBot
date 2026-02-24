@@ -5,6 +5,7 @@ import time
 import re
 import shutil
 import traceback
+import subprocess
 from datetime import datetime
 import pandas as pd
 import openpyxl
@@ -26,23 +27,24 @@ GSHEET_ID = os.environ.get("GSHEET_ID", "")
 def get_creds_path():
     creds_str = os.environ.get("GOOGLE_CREDS_JSON", "")
     if not creds_str:
-        print("❌ No se encontró GOOGLE_CREDS_JSON en las variables del servicio")
+        print("❌ ERROR: No se encontró GOOGLE_CREDS_JSON en las variables del servicio.")
         return None
     try:
+        # Intentar cargar para validar que sea un JSON correcto
         creds_dict = json.loads(creds_str)
         tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
         json.dump(creds_dict, tmp)
         tmp.close()
         return tmp.name
     except Exception as e:
-        print(f"❌ Error procesando JSON de credenciales: {e}")
+        print(f"❌ ERROR: El formato de GOOGLE_CREDS_JSON es inválido: {e}")
         return None
 
 CREDS_JSON = get_creds_path()
 partidos_monitoreados = {}
 
 # ============================================================
-# EXCEL Y GOOGLE SHEETS
+# FUNCIONES DE ALMACENAMIENTO
 # ============================================================
 
 def preparar_excel():
@@ -50,24 +52,30 @@ def preparar_excel():
         if not os.path.exists(EXCEL_PATH):
             df = pd.DataFrame(columns=['EQUIPO 1', 'EQUIPO 2', '1P 1', '1P 2', '2P 1', '2P 2', 'TOTAL', 'CUOTA AMBOS MARCAN 1 PARTE', 'AMBOS MARCAN'])
             df.to_excel(EXCEL_PATH, index=False)
+            print(f"📁 Archivo Excel temporal creado.")
     except Exception as e:
-        print(f"❌ Error Excel: {e}")
+        print(f"❌ Error al preparar Excel: {e}")
 
 def guardar_en_gsheet(datos, ambos_1p, ambos_partido):
     try:
-        if not CREDS_JSON or not GSHEET_ID: return
+        if not CREDS_JSON or not GSHEET_ID:
+            print("⚠️ Saltando Google Sheets: Faltan credenciales o ID.")
+            return
+            
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name(CREDS_JSON, scope)
         client = gspread.authorize(creds)
         sheet = client.open_by_key(GSHEET_ID).sheet1
 
-        total = f"{datos['g1p1'] + datos['g2p1']}-{datos['g1p2'] + datos['g2p2']}"
-        nueva_fila = [datos['eq1'], datos['eq2'], datos['g1p1'], datos['g1p2'], datos['g2p1'], datos['g2p2'], total, "", ""]
+        total_gol = f"{datos['g1p1'] + datos['g2p1']}-{datos['g1p2'] + datos['g2p2']}"
+        nueva_fila = [datos['eq1'], datos['eq2'], datos['g1p1'], datos['g1p2'], datos['g2p1'], datos['g2p2'], total_gol, "", ""]
         sheet.append_row(nueva_fila)
 
+        # Formato y colores
         last_idx = len(sheet.get_all_values())
         color_v = {"red": 0.0, "green": 0.9, "blue": 0.0}
         color_r = {"red": 1.0, "green": 0.0, "blue": 0.0}
+        
         sheet.format(f"H{last_idx}", {"backgroundColor": color_v if ambos_1p else color_r})
         sheet.format(f"I{last_idx}", {"backgroundColor": color_v if ambos_partido else color_r})
         print(f"📊 [GSHEETS] ✅ Sincronizado: {datos['eq1']} vs {datos['eq2']}")
@@ -81,11 +89,11 @@ def guardar_resultado(p):
         headers = {cell.value: i + 1 for i, cell in enumerate(ws[1])}
         row = ws.max_row + 1
 
-        def limpiar(n):
+        def limpiar_nombre(n):
             m = re.search(r'\((.*?)\)', n)
             return m.group(1).strip().upper() if m else n.strip().upper()
 
-        eq1, eq2 = limpiar(p['eq1']), limpiar(p['eq2'])
+        eq1, eq2 = limpiar_nombre(p['eq1']), limpiar_nombre(p['eq2'])
         t1, t2 = p['g1p1'] + p['g2p1'], p['g1p2'] + p['g2p2']
         
         ws.cell(row=row, column=headers['EQUIPO 1'], value=eq1)
@@ -104,23 +112,38 @@ def guardar_resultado(p):
             cell.fill = PatternFill(start_color="00FF00" if ok else "FF0000", fill_type="solid")
 
         wb.save(EXCEL_PATH)
-        print(f"✅ EXCEL: {eq1} vs {eq2} | Final: {t1}-{t2}")
+        print(f"✅ EXCEL LOCAL: {eq1} vs {eq2} ({t1}-{t2})")
         
         datos_gs = p.copy()
         datos_gs.update({'eq1': eq1, 'eq2': eq2})
         guardar_en_gsheet(datos_gs, a1p, ap)
     except Exception as e:
-        print(f"❌ Error guardando: {e}")
+        print(f"❌ Error en guardado final: {e}")
 
 # ============================================================
-# BUCLE DEL BOT
+# NÚCLEO DEL BOT
 # ============================================================
 
 def ejecutar_bot():
     preparar_excel()
-    # Recuperamos la ruta inyectada por el nixpacks.toml
-    chrome_path = os.environ.get("CHROME_BIN") or shutil.which("chromium")
-    print(f"🚀 BOT INICIADO. Navegador en: {chrome_path}")
+    
+    # Búsqueda exhaustiva del navegador
+    chrome_path = os.environ.get("CHROME_BIN")
+    if not chrome_path:
+        chrome_path = shutil.which("chromium") or shutil.which("google-chrome")
+    
+    if not chrome_path:
+        rutas_manuales = ["/usr/bin/chromium", "/usr/bin/google-chrome", "/nix/var/nix/profiles/default/bin/chromium"]
+        for r in rutas_manuales:
+            if os.path.exists(r):
+                chrome_path = r
+                break
+
+    if not chrome_path:
+        print("❌ ERROR CRÍTICO: No se encontró Chromium. Revisa nixpacks.toml")
+        return
+
+    print(f"🚀 Iniciando Bot. Navegador detectado en: {chrome_path}")
 
     while True:
         driver = None
@@ -129,73 +152,89 @@ def ejecutar_bot():
             options.add_argument("--headless=new")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
             options.add_argument("--window-size=1920,1080")
 
             driver = uc.Chrome(options=options, browser_executable_path=chrome_path)
             driver.get(URL)
+            print("🌐 Bet365 cargada. Buscando Battle Volta...")
             time.sleep(15)
 
             while True:
                 try:
-                    comp_elements = driver.find_elements(By.CLASS_NAME, "ovm-Competition")
-                    volta_section = next((c for c in comp_elements if "Battle Volta" in c.text), None)
+                    comps = driver.find_elements(By.CLASS_NAME, "ovm-Competition")
+                    volta = next((c for c in comps if "Battle Volta" in c.text), None)
                     en_pantalla = set()
 
-                    if volta_section:
-                        fixtures = volta_section.find_elements(By.CLASS_NAME, "ovm-Fixture")
-                        for fixture in fixtures:
+                    if volta:
+                        fixtures = volta.find_elements(By.CLASS_NAME, "ovm-Fixture")
+                        for fix in fixtures:
                             try:
-                                names = fixture.find_elements(By.CLASS_NAME, "ovm-FixtureDetailsTwoWay_TeamName")
+                                names = fix.find_elements(By.CLASS_NAME, "ovm-FixtureDetailsTwoWay_TeamName")
                                 if len(names) < 2: continue
-                                mid = f"{names[0].text} vs {names[1].text}"
-                                en_pantalla.add(mid)
+                                
+                                match_id = f"{names[0].text} vs {names[1].text}"
+                                en_pantalla.add(match_id)
 
-                                s1 = int(fixture.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamOne").text)
-                                s2 = int(fixture.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamTwo").text)
-                                timer_str = fixture.find_element(By.CLASS_NAME, "ovm-FixtureDetailsTwoWay_Timer").text
-                                t_match = re.search(r'(\d{2}):(\d{2})', timer_str)
-                                mins = int(t_match.group(1)) if t_match else 0
+                                s1 = int(fix.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamOne").text)
+                                s2 = int(fix.find_element(By.CLASS_NAME, "ovm-StandardScoresSoccer_TeamTwo").text)
+                                timer = fix.find_element(By.CLASS_NAME, "ovm-FixtureDetailsTwoWay_Timer").text
+                                
+                                m_search = re.search(r'(\d{2}):(\d{2})', timer)
+                                current_mins = int(m_search.group(1)) if m_search else 0
 
-                                if mid not in partidos_monitoreados:
-                                    print(f"🆕 Detectado: {mid}")
-                                    partidos_monitoreados[mid] = {
-                                        "eq1": names[0].text, "eq2": names[1].text, "estado": "1p",
+                                if match_id not in partidos_monitoreados:
+                                    print(f"🆕 Nuevo partido: {match_id}")
+                                    partidos_monitoreados[match_id] = {
+                                        "eq1": names[0].text, "eq2": names[1].text, "estado": "1P",
                                         "g1p1": 0, "g1p2": 0, "g2p1": 0, "g2p2": 0,
-                                        "u_s1": s1, "u_s2": s2, "m_pre3": (s1, s2), "u_min": mins
+                                        "u_s1": s1, "u_s2": s2, "m_pre3": (s1, s2), "u_min": current_mins
                                     }
 
-                                p = partidos_monitoreados[mid]
-                                p.update({"u_s1": s1, "u_s2": s2, "u_min": mins})
-                                if mins < 3: p["m_pre3"] = (s1, s2)
+                                p = partidos_monitoreados[match_id]
+                                p.update({"u_s1": s1, "u_s2": s2, "u_min": current_mins})
+                                
+                                if current_mins < 3: 
+                                    p["m_pre3"] = (s1, s2)
 
-                                if p["estado"] == "1p":
-                                    if "Descanso" in timer_str or mins >= 3:
-                                        g1, g2 = (s1, s2) if "Descanso" in timer_str else p["m_pre3"]
-                                        p.update({"g1p1": g1, "g1p2": g2, "estado": "2p"})
+                                if p["estado"] == "1P":
+                                    if "Descanso" in timer or current_mins >= 3:
+                                        # Si es descanso o pasaron 3 min, fijamos marcador 1P
+                                        g1, g2 = (s1, s2) if "Descanso" in timer else p["m_pre3"]
+                                        p.update({"g1p1": g1, "g1p2": g2, "estado": "2P"})
+                                        print(f"🌘 Media parte: {match_id} ({g1}-{g2})")
 
-                                elif p["estado"] == "2p":
-                                    if mins >= 6 or "Finalizado" in timer_str:
-                                        p.update({"g2p1": s1 - p["g1p1"], "g2p2": s2 - p["g1p2"], "estado": "finalizado"})
+                                elif p["estado"] == "2P":
+                                    if current_mins >= 6 or "Finalizado" in timer:
+                                        p.update({
+                                            "g2p1": s1 - p["g1p1"],
+                                            "g2p2": s2 - p["g1p2"],
+                                            "estado": "FIN"
+                                        })
                                         guardar_resultado(p)
                             except: continue
 
-                    # Rescate de partidos desaparecidos
-                    borrar = [m for m, p in partidos_monitoreados.items() if m not in en_pantalla and p["estado"] != "finalizado"]
+                    # Limpiar partidos finalizados o desaparecidos
+                    borrar = [m for m, p in partidos_monitoreados.items() if m not in en_pantalla and p["estado"] != "FIN"]
                     for m in borrar:
                         p = partidos_monitoreados[m]
+                        # Si desaparece cerca del final, lo damos por terminado
                         if p["u_min"] >= 5:
-                            p.update({"g2p1": p["u_s1"] - p["g1p1"], "g2p2": p["u_s2"] - p["g1p2"], "estado": "finalizado"})
+                            p.update({"g2p1": p["u_s1"] - p["g1p1"], "g2p2": p["u_s2"] - p["g1p2"], "estado": "FIN"})
                             guardar_resultado(p)
                         del partidos_monitoreados[m]
 
                     time.sleep(10)
-                except:
+                except Exception as inner_e:
+                    print(f"⚠️ Error en escaneo: {inner_e}")
                     driver.get(URL)
                     time.sleep(10)
 
-        except Exception as e:
-            print(f"❌ Error crítico: {e}")
-            if driver: driver.quit()
+        except Exception as outer_e:
+            print(f"❌ Error crítico de sesión: {outer_e}")
+            if driver:
+                try: driver.quit()
+                except: pass
             time.sleep(20)
 
 if __name__ == "__main__":
